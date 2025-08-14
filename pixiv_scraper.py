@@ -1,0 +1,219 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.firefox.service import Service
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
+import tempfile
+import shutil
+import time
+import os
+import requests
+invalid_chars = '/\\:*?"<>|'
+
+service = Service('./geckodriver')
+
+#Using firefox profile so it is logged in to site.
+# prompting user for firefox profile ID
+user_prof = open("firefox_profile.txt").read()
+print(f"Running on profile: {user_prof}")
+if user_prof == "":
+    print("hint: Go to about:profiles in firefox.")
+    print("example where fgybejjt is the profile ID: fgybejjt.default")
+    print("You have to be logged into Pixiv on the profile!")
+    user_prof = input("Enter your firefox non-release profile ID:\n").strip()
+    open("firefox_profile.txt", "w").write(str(user_prof))
+
+#find the first partof the profile path based on OS
+if os.name == "nt":
+    path = os.path.join(os.environ['APPDATA'], 'Mozilla', 'Firefox', 'Profiles')
+    profile_path=path/{user_prof}.default
+    cache = os.path.join(os.environ['LOCALAPPDATA'], 'Temp', 'selenium_firefox_cache')
+elif os.name == "posix":
+    profile_path=os.path.expanduser(f"~/.mozilla/firefox/{user_prof}.default")
+    cache = os.path.expanduser('~/.cache/selenium_firefox_cache')
+#delete cached files from last use if they were not deleted
+if os.path.exists(cache):
+    shutil.rmtree(cache)
+
+profile = FirefoxProfile(profile_path)
+options = Options()
+options.profile = profile
+
+driver = webdriver.Firefox(service=service, options=options)
+wait = WebDriverWait(driver, 20)
+driver.implicitly_wait(10)
+
+print("Example where 113849413 is the ID: https://www.pixiv.net/en/users/113849413")
+user_id = input("Enter pixiv creator ID:\n").strip()
+url = f"https://www.pixiv.net/en/users/{user_id}/illustrations"
+MAIN_URL = url
+
+driver.get(MAIN_URL)
+time.sleep(3)
+
+creator_name_element = driver.find_element(By.CLASS_NAME, "zmLZa")
+creator_name = creator_name_element.get_attribute("innerHTML")
+
+if creator_name != None and creator_name !="":
+    os.makedirs(creator_name, exist_ok=True)
+else:
+    os.makedirs(user_id, exist_ok=True)
+
+#Gets list of links for the posts
+try:
+    fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
+except NoSuchElementException:
+    fNOdSq_elements = None
+if fNOdSq_elements != None:
+    fNOdSq_hrefs = []
+    for item in fNOdSq_elements:
+        href = item.get_attribute("href")
+        fNOdSq_hrefs.append(href)
+else:
+    fNOdSq_hrefs = None
+
+#Gets list of links for the next page buttons
+try:
+    buYbfM_elements = driver.find_elements(By.CLASS_NAME, "buYbfM")
+except NoSuchElementException:
+    buYbfM_elements = None
+if buYbfM_elements != None:
+    buYbfM_hrefs = []
+    for item in buYbfM_elements:
+        href = item.get_attribute("href")
+        buYbfM_hrefs.append(href)
+else:
+    buYbfM_hrefs = None
+
+counter = 0
+
+def navigate(href):
+    global counter
+    #goes to the post
+    driver.get(href)
+    time.sleep(2)
+
+    #some posts have multiple images and 'show all' button needs pressing
+    try:
+        show_all = driver.find_element(By.CLASS_NAME, "eVaEhv")
+    except NoSuchElementException:
+        show_all = None
+    if show_all:
+        show_all.click()
+        time.sleep(3)
+
+    #get the name of the post (some posts dont have names though; the fNOdSq button says untitled)
+    try:
+        title_element = driver.find_element(By.CLASS_NAME, "hLsLTc")
+    except NoSuchElementException:
+        title_element = None
+    if title_element != None:
+        title_raw = title_element.get_attribute("innerHTML")
+        if title_raw != None:
+            title = ''.join(char for char in title_raw if char not in invalid_chars)
+        else:
+            title = "untitled"
+    else:
+        title = "untitled"
+    #the image elemetns
+    try:
+        feuJAv_elements = driver.find_elements(By.CLASS_NAME, "feuJAv")
+    except NoSuchElementException:
+        feuJAv_elements = None
+    #zoom in on the images
+    if feuJAv_elements != None:
+        for i in range(len(feuJAv_elements)):
+            time.sleep(2)
+            if i == 0:
+                feuJAv_elements[0].click()
+            time.sleep(2)
+            #get the zoomed image's source
+            try:
+                all_images = driver.find_elements(By.TAG_NAME, "img")
+            except:
+                all_images = None
+            if all_images != None:
+                for item in all_images:
+                    if item.get_attribute("src") != None and item.get_attribute("src") != "":
+                        link = item.get_attribute("src")
+                        if link != None:
+                            if link.startswith("https://i.pximg.net/img-original/"):
+                                src = link
+
+                                #download iamge
+                                # set headers to look like the request comes from the context menu
+                                headers = {
+                                    "User-Agent": driver.execute_script("return navigator.userAgent;"),
+                                    "Referer": driver.current_url
+                                }
+
+                                try:
+                                    response = requests.get(src, headers=headers, stream=True, timeout=20)
+                                except requests.exceptions.ConnectionError:
+                                    print("Pausing scraping for 5 mins due to server complaint")
+                                    time.sleep(5*60)
+                                    response = requests.get(src, headers=headers, stream=True, timeout=20)
+
+                                if creator_name != None and creator_name !="":
+                                    file = f"{creator_name}/{title}_{i}.png"
+                                    if not os.path.exists(file):
+                                        with open(file, "wb") as image:
+                                            image.write(response.content)
+                                        counter += 1
+                                    elif os.path.exists(file):
+                                        print("Image exists; skipping...")
+                                else:
+                                    file = f"{user_id}/{title}_{i}.png"
+                                    if not os.path.exists(file):
+                                        with open(f"{user_id}/{title}_{i}.png", "wb") as image:
+                                            image.write(response.content)
+                                        counter += 1
+                                    elif os.path.exists(file):
+                                        print("Image exists; skipping...")
+
+            time.sleep(1)
+            try:
+                next_image = driver.find_element(By.CLASS_NAME, "lcgCGY")
+            except NoSuchElementException:
+                next_image = None
+            if next_image != None:
+                next_image.click()
+            time.sleep(1)
+
+    #take break every x downloads
+    if counter >= 99:
+         print("Pausing scraping for 30 mins to avoid server complaint")
+         time.sleep(30*60)
+         counter = 0
+
+def next_page(href):
+    #moves to next page of posts
+    driver.get(href)
+    time.sleep(3)
+
+if fNOdSq_hrefs != None:
+    for item in fNOdSq_hrefs:
+        navigate(item)
+
+if buYbfM_hrefs != None:
+    for item in buYbfM_hrefs:
+        next_page(item)
+
+        #Gets list of links for the posts (again)
+        fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
+        fN0dSq_hrefs = []
+        for item in fNOdSq_elements:
+            href = item.get_attribute("href")
+            fN0dSq_hrefs.append(href)
+
+        for item in fN0dSq_hrefs:
+            navigate(item)
+
+driver.quit()
+shutil.rmtree(cache)
