@@ -14,6 +14,7 @@ import shutil
 import time
 import os
 import requests
+import sys
 invalid_chars = '/\\:*?"<>|'
 
 service = Service('./geckodriver')
@@ -21,13 +22,14 @@ service = Service('./geckodriver')
 #Using firefox profile so it is logged in to site.
 # prompting user for firefox profile ID
 user_prof = open("firefox_profile.txt").read()
-print(f"Running on profile: {user_prof}")
 if user_prof == "":
     print("hint: Go to about:profiles in firefox.")
     print("example where fgybejjt is the profile ID: fgybejjt.default")
     print("You have to be logged into Pixiv on the profile!")
     user_prof = input("Enter your firefox non-release profile ID:\n").strip()
     open("firefox_profile.txt", "w").write(str(user_prof))
+else:
+    print(f"Running on profile: {user_prof}")
 
 #find the first partof the profile path based on OS
 if os.name == "nt":
@@ -40,20 +42,49 @@ elif os.name == "posix":
 #delete cached files from last use if they were not deleted
 if os.path.exists(cache):
     shutil.rmtree(cache)
+    os.makedirs(cache, exist_ok=True)
+else:
+    os.makedirs(cache, exist_ok=True)
 
 profile = FirefoxProfile(profile_path)
 options = Options()
 options.profile = profile
 
+profile.set_preference("browser.cache.disk.enable", True)
+profile.set_preference("browser.cache.disk.parent_directory", cache)
+
 driver = webdriver.Firefox(service=service, options=options)
 wait = WebDriverWait(driver, 20)
 driver.implicitly_wait(10)
 
-print("Example where 113849413 is the ID: https://www.pixiv.net/en/users/113849413")
-user_id = input("Enter pixiv creator ID:\n").strip()
-url = f"https://www.pixiv.net/en/users/{user_id}/illustrations"
-MAIN_URL = url
+try:
+    choice = int(input("Would you like to scrape from a creator's page, or your own bookmarked posts?\n1. Creator's page  2. My bookmarks\n\n"))
+except ValueError:
+    print("\n\nThat isn't a valid option.\n\n")
+    try:
+        choice = int(input("Would you like to scrape from a creator's page, or your own bookmarked posts?\n1. Creator's page  2. My bookmarks\n\n"))
+    except:
+        choice = None
+        driver.quit()
+        shutil.rmtree(cache)
+        sys.exit()
 
+if choice == 1:
+    print("Example where 113849413 is the ID: https://www.pixiv.net/en/users/113849413")
+    user_id = input("Enter pixiv creator ID:\n").strip()
+    url = f"https://www.pixiv.net/en/users/{user_id}/illustrations"
+elif choice == 2:
+    print("Example where 113849413 is the ID: https://www.pixiv.net/en/users/113849413")
+    user_id = input("Provide your pixiv user ID:\n").strip()
+    url = f"https://www.pixiv.net/en/users/{user_id}/bookmarks/artworks"
+else:
+    url = None
+    print("\n\nThat isn't a valid option.\n\n")
+    driver.quit()
+    shutil.rmtree(cache)
+    sys.exit()
+
+MAIN_URL = url
 driver.get(MAIN_URL)
 time.sleep(3)
 
@@ -94,6 +125,7 @@ else:
 counter = 0
 
 def navigate(href):
+    print("Processing...")
     global counter
     #goes to the post
     driver.get(href)
@@ -217,3 +249,4 @@ if buYbfM_hrefs != None:
 
 driver.quit()
 shutil.rmtree(cache)
+sys.exit()
