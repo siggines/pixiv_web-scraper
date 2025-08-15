@@ -83,7 +83,7 @@ else:
     shutil.rmtree(cache)
     sys.exit()
 tag = input("Enter tag to filter by below (leave blank for no filter):\n")
-
+print("Please wait...")
 
 #start
 MAIN_URL = url
@@ -151,9 +151,12 @@ while tag and tag.strip():
     if located == False:
         print("There are no tags present on this page\n")
         tag = None
+        break
     if located == True and found == False:
         print("Tag not found\n")
         tag = input("Enter tag to filter by below (leave blank for no filter):\n")
+    if located == True:
+        break
 
 #get elements for navigation
 #Gets list of links for the posts
