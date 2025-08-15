@@ -30,8 +30,7 @@ if user_prof == "":
     open("firefox_profile.txt", "w").write(str(user_prof))
 else:
     print(f"Running on profile: {user_prof}")
-
-#find the first partof the profile path based on OS
+#find the first partof the profile path and the cache path based on OS
 if os.name == "nt":
     path = os.path.join(os.environ['APPDATA'], 'Mozilla', 'Firefox', 'Profiles')
     profile_path=path/{user_prof}.default
@@ -39,6 +38,7 @@ if os.name == "nt":
 elif os.name == "posix":
     profile_path=os.path.expanduser(f"~/.mozilla/firefox/{user_prof}.default")
     cache = os.path.expanduser('~/.cache/selenium_firefox_cache')
+
 #delete cached files from last use if they were not deleted
 if os.path.exists(cache):
     shutil.rmtree(cache)
@@ -46,17 +46,17 @@ if os.path.exists(cache):
 else:
     os.makedirs(cache, exist_ok=True)
 
+#set up the profile
 profile = FirefoxProfile(profile_path)
 options = Options()
 options.profile = profile
-
 profile.set_preference("browser.cache.disk.enable", True)
 profile.set_preference("browser.cache.disk.parent_directory", cache)
-
 driver = webdriver.Firefox(service=service, options=options)
 wait = WebDriverWait(driver, 20)
 driver.implicitly_wait(10)
 
+#get user input
 try:
     choice = int(input("Would you like to scrape from a creator's page, or your own bookmarked posts?\n1. Creator's page  2. My bookmarks\n\n"))
 except ValueError:
@@ -68,7 +68,6 @@ except ValueError:
         driver.quit()
         shutil.rmtree(cache)
         sys.exit()
-
 if choice == 1:
     print("Example where 113849413 is the ID: https://www.pixiv.net/en/users/113849413")
     user_id = input("Enter pixiv creator ID:\n").strip()
@@ -84,21 +83,26 @@ else:
     shutil.rmtree(cache)
     sys.exit()
 
+#start
 MAIN_URL = url
 driver.get(MAIN_URL)
 time.sleep(3)
 
-creator_name_element = driver.find_element(By.CLASS_NAME, "zmLZa")
-creator_name = creator_name_element.get_attribute("innerHTML")
+#get the name of the user
+try:
+    creator_name_element = driver.find_element(By.CLASS_NAME, "zmLZa")
+except NoSuchElementException:
+    creator_name_element = None
+if creator_name_element:
+    creator_name = creator_name_element.get_attribute("innerHTML")
+    if creator_name:
+        os.makedirs(creator_name, exist_ok=True)
+    else:
+        os.makedirs(user_id, exist_ok=True)
 
-if creator_name:
-    os.makedirs(creator_name, exist_ok=True)
-else:
-    os.makedirs(user_id, exist_ok=True)
-
-tag = input("Enter tag to filter by below (leave blank for no filter):\n")
-if tag and tag.strip():
-    tags = driver.find_elements(By.CLASS_NAME, "nXebZ")
+#try to find names of the tags until a match
+#The tag element is different if there is japanese translation alongside it
+def identify_tag(tags):
     for item in tags:
         try:
             tag_href = item.get_attribute("href")
@@ -110,6 +114,31 @@ if tag and tag.strip():
                 time.sleep(2)
                 break
 
+#get tag user input
+tag = input("Enter tag to filter by below (leave blank for no filter):\n")
+if tag and tag.strip():
+    try:
+        tags = driver.find_elements(By.CLASS_NAME, "nXebZ")
+        identify_tag(tags)
+    except NoSuchElementException:
+        tags = None
+    try:
+        tags = driver.find_elements(By.CLASS_NAME, "wcevv")
+        identify_tag(tags)
+    except NoSuchElementException:
+        tags = None
+    try:
+        tags = driver.find_elements(By.CLASS_NAME, "kmiSvx")
+        identify_tag(tags)
+    except NoSuchElementException:
+        tags = None
+    try:
+        tags = driver.find_elements(By.CLASS_NAME, "jqhffQ")
+        identify_tag(tags)
+    except NoSuchElementException:
+        tags = None
+
+#get elements for navigation
 #Gets list of links for the posts
 try:
     fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
@@ -122,7 +151,6 @@ if fNOdSq_elements:
         fNOdSq_hrefs.append(href)
 else:
     fNOdSq_hrefs = None
-
 #Gets list of links for the next page buttons
 try:
     buYbfM_elements = driver.find_elements(By.CLASS_NAME, "buYbfM")
@@ -136,15 +164,45 @@ if buYbfM_elements:
 else:
     buYbfM_hrefs = None
 
-counter = 0
-
+#functions
+counter = 0 #count downloads
+#downloads the image, making server think the request comes from a context menu aciton
+def get_image(src, title, i):
+    print("getting image...")
+    global counter
+    headers = {
+        "User-Agent": driver.execute_script("return navigator.userAgent;"),
+        "Referer": driver.current_url
+    }
+    try:
+        response = requests.get(src, headers=headers, stream=True, timeout=20)
+    except requests.exceptions.ConnectionError:
+        print("Pausing scraping for 5 mins due to server complaint")
+        time.sleep(5*60)
+        response = requests.get(src, headers=headers, stream=True, timeout=20)
+    if creator_name:
+        file = f"{creator_name}/{title}_{i}.png"
+        if not os.path.exists(file):
+            with open(file, "wb") as image:
+                image.write(response.content)
+            counter += 1
+        elif os.path.exists(file):
+            print("Image exists; skipping...")
+    else:
+        file = f"{user_id}/{title}_{i}.png"
+        if not os.path.exists(file):
+            with open(f"{user_id}/{title}_{i}.png", "wb") as image:
+                image.write(response.content)
+            counter += 1
+        elif os.path.exists(file):
+            print("Image exists; skipping...")
+#navigate from post to post, zoom in on image after expanding, and then on to next post
 def navigate(href):
-    print("Processing...")
+    print("navigating...")
     global counter
     #goes to the post
     driver.get(href)
     time.sleep(2)
-
     #some posts have multiple images and 'show all' button needs pressing
     try:
         show_all = driver.find_element(By.CLASS_NAME, "eVaEhv")
@@ -153,7 +211,6 @@ def navigate(href):
     if show_all:
         show_all.click()
         time.sleep(3)
-
     #get the name of the post (some posts dont have names though; the fNOdSq button says untitled)
     try:
         title_element = driver.find_element(By.CLASS_NAME, "hLsLTc")
@@ -189,76 +246,48 @@ def navigate(href):
                     if item.get_attribute("src"):
                         link = item.get_attribute("src")
                         if link:
-                            if link.startswith("https://i.pximg.net/img-original/"):
-                                src = link
-
-                                #download iamge
-                                # set headers to look like the request comes from the context menu
-                                headers = {
-                                    "User-Agent": driver.execute_script("return navigator.userAgent;"),
-                                    "Referer": driver.current_url
-                                }
-
-                                try:
-                                    response = requests.get(src, headers=headers, stream=True, timeout=20)
-                                except requests.exceptions.ConnectionError:
-                                    print("Pausing scraping for 5 mins due to server complaint")
-                                    time.sleep(5*60)
-                                    response = requests.get(src, headers=headers, stream=True, timeout=20)
-
-                                if creator_name:
-                                    file = f"{creator_name}/{title}_{i}.png"
-                                    if not os.path.exists(file):
-                                        with open(file, "wb") as image:
-                                            image.write(response.content)
-                                        counter += 1
-                                    elif os.path.exists(file):
-                                        print("Image exists; skipping...")
-                                else:
-                                    file = f"{user_id}/{title}_{i}.png"
-                                    if not os.path.exists(file):
-                                        with open(f"{user_id}/{title}_{i}.png", "wb") as image:
-                                            image.write(response.content)
-                                        counter += 1
-                                    elif os.path.exists(file):
-                                        print("Image exists; skipping...")
+                            if link.startswith("https://i.pximg.net/img-original/") and f"p{i}" in link :
+                                get_image(link, title, i)
+                            elif link.startswith("https://i.pximg.net/img-original/") and f"p{i}" not in link:
+                                print("Error: issue getting next image")
 
             time.sleep(1)
+            #clicks the down arrow to go to next image
             try:
                 next_image = driver.find_element(By.CLASS_NAME, "lcgCGY")
             except NoSuchElementException:
                 next_image = None
+                print("Error: Could not move to next image in post!")
             if next_image:
                 next_image.click()
                 time.sleep(4)
             time.sleep(1)
 
     #take break every x downloads
-    if counter >= 99:
-         print("Pausing scraping for 30 mins to avoid server complaint")
-         time.sleep(30*60)
+    if counter >= 49:
+         print("50 images reached, pausing scraping for 20 minutes to avoid server complaint")
+         time.sleep(20*60)
          counter = 0
-
+#go to next page
 def next_page(href):
     #moves to next page of posts
     driver.get(href)
     time.sleep(3)
 
+#if there are posts iterate through them calling navigate
 if fNOdSq_hrefs:
     for item in fNOdSq_hrefs:
         navigate(item)
-
+#when post iteration is done, go to next page
 if buYbfM_hrefs:
     for item in buYbfM_hrefs:
         next_page(item)
-
         #Gets list of links for the posts (again)
         fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
         fN0dSq_hrefs = []
         for item in fNOdSq_elements:
             href = item.get_attribute("href")
             fN0dSq_hrefs.append(href)
-
         for item in fN0dSq_hrefs:
             navigate(item)
 
