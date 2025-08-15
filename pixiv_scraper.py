@@ -216,6 +216,7 @@ def navigate(href):
                 next_image = None
             if next_image != None:
                 next_image.click()
+                time.sleep(4)
             time.sleep(1)
 
     #take break every x downloads
