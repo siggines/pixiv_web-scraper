@@ -3,7 +3,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.firefox.service import Service
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchAttributeException, TimeoutException
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.keys import Keys
@@ -33,7 +33,7 @@ else:
 #find the first partof the profile path and the cache path based on OS
 if os.name == "nt":
     path = os.path.join(os.environ['APPDATA'], 'Mozilla', 'Firefox', 'Profiles')
-    profile_path=path/{user_prof}.default
+    profile_path=os.path.join(path, f"{user_prof}.default")
     cache = os.path.join(os.environ['LOCALAPPDATA'], 'Temp', 'selenium_firefox_cache')
 elif os.name == "posix":
     profile_path=os.path.expanduser(f"~/.mozilla/firefox/{user_prof}.default")
@@ -91,6 +91,7 @@ driver.get(MAIN_URL)
 time.sleep(3)
 
 #get the name of the user
+creator_name = None
 try:
     creator_name_element = driver.find_element(By.CLASS_NAME, "zmLZa")
 except NoSuchElementException:
@@ -104,59 +105,25 @@ if creator_name_element:
 
 #try to find names of the tags until a match
 #The tag element is different if there is japanese translation alongside it
-found = False
 def identify_tag(tags):
-    global found
     for item in tags:
-        try:
-            tag_href = item.get_attribute("href")
-        except NoSuchElementException:
-            tag_href = None
+        tag_href = item.get_attribute("href")
         if tag_href:
             if f"{tag}".lower() in tag_href.lower():
                 driver.get(tag_href)
                 time.sleep(2)
-                found = True
-                break
-    if found == False:
-        return "not found"
+                return True
 
 #find tag
-while tag and tag.strip():
-    located = False
-    try:
-        tags = driver.find_elements(By.CLASS_NAME, "nXebZ")
-        identify_tag(tags)
-        located = True
-    except NoSuchElementException:
-        tags = None
-    try:
-        tags = driver.find_elements(By.CLASS_NAME, "wcevv")
-        identify_tag(tags)
-        located = True
-    except NoSuchElementException:
-        tags = None
-    try:
-        tags = driver.find_elements(By.CLASS_NAME, "kmiSvx")
-        identify_tag(tags)
-        located = True
-    except NoSuchElementException:
-        tags = None
-    try:
-        tags = driver.find_elements(By.CLASS_NAME, "jqhffQ")
-        identify_tag(tags)
-        located = True
-    except NoSuchElementException:
-        tags = None
-    if located == False:
-        print("There are no tags present on this page\n")
-        tag = None
-        break
-    if located == True and found == False:
-        print("Tag not found\n")
-        tag = input("Enter tag to filter by below (leave blank for no filter):\n")
-    if located == True:
-        break
+if tag:
+    tags = driver.find_elements(By.CLASS_NAME, "nXebZ")
+    find = None
+    while not find:
+        find = identify_tag(tags)
+        if not find:
+            tag = input("Could not find tag (note: translated tags won't work). Try again (leave blank to skip):\n")
+            if not tag:
+                find = True
 
 #get elements for navigation
 #Gets list of links for the posts
