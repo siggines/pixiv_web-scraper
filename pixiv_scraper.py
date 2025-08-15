@@ -82,6 +82,8 @@ else:
     driver.quit()
     shutil.rmtree(cache)
     sys.exit()
+tag = input("Enter tag to filter by below (leave blank for no filter):\n")
+
 
 #start
 MAIN_URL = url
@@ -102,7 +104,9 @@ if creator_name_element:
 
 #try to find names of the tags until a match
 #The tag element is different if there is japanese translation alongside it
+found = False
 def identify_tag(tags):
+    global found
     for item in tags:
         try:
             tag_href = item.get_attribute("href")
@@ -112,45 +116,60 @@ def identify_tag(tags):
             if f"{tag}".lower() in tag_href.lower():
                 driver.get(tag_href)
                 time.sleep(2)
+                found = True
                 break
+    if found == False:
+        return "not found"
 
-#get tag user input
-tag = input("Enter tag to filter by below (leave blank for no filter):\n")
-if tag and tag.strip():
+#find tag
+while tag and tag.strip():
+    located = False
     try:
         tags = driver.find_elements(By.CLASS_NAME, "nXebZ")
         identify_tag(tags)
+        located = True
     except NoSuchElementException:
         tags = None
     try:
         tags = driver.find_elements(By.CLASS_NAME, "wcevv")
         identify_tag(tags)
+        located = True
     except NoSuchElementException:
         tags = None
     try:
         tags = driver.find_elements(By.CLASS_NAME, "kmiSvx")
         identify_tag(tags)
+        located = True
     except NoSuchElementException:
         tags = None
     try:
         tags = driver.find_elements(By.CLASS_NAME, "jqhffQ")
         identify_tag(tags)
+        located = True
     except NoSuchElementException:
         tags = None
+    if located == False:
+        print("There are no tags present on this page\n")
+        tag = None
+    if located == True and found == False:
+        print("Tag not found\n")
+        tag = input("Enter tag to filter by below (leave blank for no filter):\n")
 
 #get elements for navigation
 #Gets list of links for the posts
-try:
-    fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
-except NoSuchElementException:
-    fNOdSq_elements = None
-if fNOdSq_elements:
-    fNOdSq_hrefs = []
-    for item in fNOdSq_elements:
-        href = item.get_attribute("href")
-        fNOdSq_hrefs.append(href)
-else:
-    fNOdSq_hrefs = None
+def list_posts():
+    try:
+        fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
+    except NoSuchElementException:
+        fNOdSq_elements = None
+    if fNOdSq_elements:
+        fNOdSq_hrefs = []
+        for item in fNOdSq_elements:
+            href = item.get_attribute("href")
+            fNOdSq_hrefs.append(href)
+    else:
+        fNOdSq_hrefs = None
+    return fNOdSq_hrefs
 #Gets list of links for the next page buttons
 try:
     buYbfM_elements = driver.find_elements(By.CLASS_NAME, "buYbfM")
@@ -265,8 +284,8 @@ def navigate(href):
 
     #take break every x downloads
     if counter >= 49:
-         print("50 images reached, pausing scraping for 20 minutes to avoid server complaint")
-         time.sleep(20*60)
+         print("50 images reached, pausing scraping for 5 minutes to avoid server complaint")
+         time.sleep(5*60)
          counter = 0
 #go to next page
 def next_page(href):
@@ -275,6 +294,7 @@ def next_page(href):
     time.sleep(3)
 
 #if there are posts iterate through them calling navigate
+fNOdSq_hrefs = list_posts()
 if fNOdSq_hrefs:
     for item in fNOdSq_hrefs:
         navigate(item)
@@ -283,13 +303,10 @@ if buYbfM_hrefs:
     for item in buYbfM_hrefs:
         next_page(item)
         #Gets list of links for the posts (again)
-        fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
-        fN0dSq_hrefs = []
-        for item in fNOdSq_elements:
-            href = item.get_attribute("href")
-            fN0dSq_hrefs.append(href)
-        for item in fN0dSq_hrefs:
-            navigate(item)
+        fNOdSq_hrefs = list_posts()
+        if fNOdSq_hrefs:
+            for item in fNOdSq_hrefs:
+                navigate(item)
 
 driver.quit()
 shutil.rmtree(cache)
