@@ -91,17 +91,31 @@ time.sleep(3)
 creator_name_element = driver.find_element(By.CLASS_NAME, "zmLZa")
 creator_name = creator_name_element.get_attribute("innerHTML")
 
-if creator_name != None and creator_name !="":
+if creator_name:
     os.makedirs(creator_name, exist_ok=True)
 else:
     os.makedirs(user_id, exist_ok=True)
+
+tag = input("Enter tag to filter by below (leave blank for no filter):\n")
+if tag and tag.strip():
+    tags = driver.find_elements(By.CLASS_NAME, "nXebZ")
+    for item in tags:
+        try:
+            tag_href = item.get_attribute("href")
+        except NoSuchElementException:
+            tag_href = None
+        if tag_href:
+            if f"{tag}".lower() in tag_href.lower():
+                driver.get(tag_href)
+                time.sleep(2)
+                break
 
 #Gets list of links for the posts
 try:
     fNOdSq_elements = driver.find_elements(By.CLASS_NAME, "fNOdSq")
 except NoSuchElementException:
     fNOdSq_elements = None
-if fNOdSq_elements != None:
+if fNOdSq_elements:
     fNOdSq_hrefs = []
     for item in fNOdSq_elements:
         href = item.get_attribute("href")
@@ -114,7 +128,7 @@ try:
     buYbfM_elements = driver.find_elements(By.CLASS_NAME, "buYbfM")
 except NoSuchElementException:
     buYbfM_elements = None
-if buYbfM_elements != None:
+if buYbfM_elements:
     buYbfM_hrefs = []
     for item in buYbfM_elements:
         href = item.get_attribute("href")
@@ -145,9 +159,9 @@ def navigate(href):
         title_element = driver.find_element(By.CLASS_NAME, "hLsLTc")
     except NoSuchElementException:
         title_element = None
-    if title_element != None:
+    if title_element:
         title_raw = title_element.get_attribute("innerHTML")
-        if title_raw != None:
+        if title_raw:
             title = ''.join(char for char in title_raw if char not in invalid_chars)
         else:
             title = "untitled"
@@ -159,7 +173,7 @@ def navigate(href):
     except NoSuchElementException:
         feuJAv_elements = None
     #zoom in on the images
-    if feuJAv_elements != None:
+    if feuJAv_elements:
         for i in range(len(feuJAv_elements)):
             time.sleep(2)
             if i == 0:
@@ -170,11 +184,11 @@ def navigate(href):
                 all_images = driver.find_elements(By.TAG_NAME, "img")
             except:
                 all_images = None
-            if all_images != None:
+            if all_images:
                 for item in all_images:
-                    if item.get_attribute("src") != None and item.get_attribute("src") != "":
+                    if item.get_attribute("src"):
                         link = item.get_attribute("src")
-                        if link != None:
+                        if link:
                             if link.startswith("https://i.pximg.net/img-original/"):
                                 src = link
 
@@ -192,7 +206,7 @@ def navigate(href):
                                     time.sleep(5*60)
                                     response = requests.get(src, headers=headers, stream=True, timeout=20)
 
-                                if creator_name != None and creator_name !="":
+                                if creator_name:
                                     file = f"{creator_name}/{title}_{i}.png"
                                     if not os.path.exists(file):
                                         with open(file, "wb") as image:
@@ -214,7 +228,7 @@ def navigate(href):
                 next_image = driver.find_element(By.CLASS_NAME, "lcgCGY")
             except NoSuchElementException:
                 next_image = None
-            if next_image != None:
+            if next_image:
                 next_image.click()
                 time.sleep(4)
             time.sleep(1)
@@ -230,11 +244,11 @@ def next_page(href):
     driver.get(href)
     time.sleep(3)
 
-if fNOdSq_hrefs != None:
+if fNOdSq_hrefs:
     for item in fNOdSq_hrefs:
         navigate(item)
 
-if buYbfM_hrefs != None:
+if buYbfM_hrefs:
     for item in buYbfM_hrefs:
         next_page(item)
 
